@@ -20,14 +20,14 @@ session.headers.update({"Accept": "application/vnd.atlas.2024-08-05+json"})
 
 
 def get_current_cluster_config():
-    url = f"{BASE_URL}/groups/{PROJECT_ID}/clusters/{CLUSTER_NAME}"
+    url = f"{BASE_URL}/api/atlas/v2/groups/{PROJECT_ID}/clusters/{CLUSTER_NAME}"
     response = session.get(url)
     response.raise_for_status()
     return response.json()
 
 
 def update_cluster_size(new_size):
-    url = f"{BASE_URL}/groups/{PROJECT_ID}/clusters/{CLUSTER_NAME}"
+    url = f"{BASE_URL}/api/atlas/v2/groups/{PROJECT_ID}/clusters/{CLUSTER_NAME}"
 
     # Get the current configuration
     current_config = get_current_cluster_config()
