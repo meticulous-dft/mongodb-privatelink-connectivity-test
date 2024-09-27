@@ -25,12 +25,23 @@ var (
 	toEmail              string
 	password             string
 	checkInterval        time.Duration
+	logFile              *os.File
 )
 
 func init() {
-	err := godotenv.Load()
+	var err error
+	logFile, err = os.OpenFile("mongodb_connection_monitor.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatal("Failed to open log file:", err)
+	}
+	log.SetOutput(logFile)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	log.Println("Starting application initialization")
+
+	err = godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file:", err)
 	}
 
 	smtpHost = os.Getenv("SMTP_HOST")
@@ -52,15 +63,20 @@ func init() {
 		log.Fatalf("Invalid CHECK_INTERVAL_SECONDS: %v", err)
 	}
 	checkInterval = time.Duration(interval) * time.Second
+
+	log.Println("Application initialization complete")
 }
 
 func main() {
+	defer logFile.Close()
+
 	mongoURI := os.Getenv("MONGODB_URI")
 	if mongoURI == "" {
 		log.Fatal("MONGODB_URI not set in .env file")
 	}
 
 	log.Printf("Starting MongoDB connection monitor. Check interval: %v\n", checkInterval)
+	log.Printf("MongoDB URI: %s\n", mongoURI) // Be cautious with logging sensitive information
 
 	for {
 		checkConnection(mongoURI)
@@ -69,7 +85,9 @@ func main() {
 }
 
 func checkConnection(uri string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	log.Println("Starting connection check")
+
+	ctx, cancel := context.WithTimeout(context.Background(), checkInterval)
 	defer cancel()
 
 	clientOpts := options.Client().ApplyURI(uri)
@@ -92,51 +110,52 @@ func checkConnection(uri string) {
 	handleConnectionSuccess()
 
 	now := time.Now().Format(time.RFC3339)
-	fmt.Printf("\n--- Connection Check at %s ---\n", now)
-	fmt.Println("Successfully connected to MongoDB")
+	log.Printf("\n--- Connection Check at %s ---\n", now)
+
+	log.Println("Successfully connected to MongoDB")
 
 	// Print connection information
-	fmt.Println("Connection Information:")
+	log.Println("Connection Information:")
 	var serverStatus bson.M
 	err = client.Database("admin").RunCommand(ctx, bson.D{{"serverStatus", 1}}).Decode(&serverStatus)
 	if err != nil {
 		log.Printf("Failed to get server status: %v\n", err)
 		return
 	}
-	fmt.Printf("Server version: %v\n", serverStatus["version"])
+	log.Printf("Server version: %v\n", serverStatus["version"])
 	if transportSecurity, ok := serverStatus["transportSecurity"].(bson.M); ok {
-		fmt.Printf("Connection type: %v\n", transportSecurity["type"])
+		log.Printf("Connection type: %v\n", transportSecurity["type"])
 	}
 
 	// Print cluster topology
-	fmt.Println("Cluster Topology:")
+	log.Println("Cluster Topology:")
 	var topology bson.M
 	err = client.Database("admin").RunCommand(ctx, bson.D{{"isMaster", 1}}).Decode(&topology)
 	if err != nil {
 		log.Printf("Failed to get cluster topology: %v\n", err)
 		return
 	}
-	fmt.Printf("Is master: %v\n", topology["ismaster"])
+	log.Printf("Is master: %v\n", topology["ismaster"])
 	if hosts, ok := topology["hosts"].(primitive.A); ok {
-		fmt.Println("Hosts:")
+		log.Println("Hosts:")
 		for _, host := range hosts {
-			fmt.Printf("  - %v\n", host)
+			log.Printf("  - %v\n", host)
 		}
 	}
 	if secondaries, ok := topology["secondaries"].(primitive.A); ok {
-		fmt.Println("Secondaries:")
+		log.Println("Secondaries:")
 		for _, secondary := range secondaries {
-			fmt.Printf("  - %v\n", secondary)
+			log.Printf("  - %v\n", secondary)
 		}
 	}
 
 	// Print read preference
-	fmt.Printf("Read Preference: %v\n", clientOpts.ReadPreference)
+	log.Printf("Read Preference: %v\n", clientOpts.ReadPreference)
 
 	// Print write concern
-	fmt.Printf("Write Concern: %+v\n", clientOpts.WriteConcern)
+	log.Printf("Write Concern: %+v\n", clientOpts.WriteConcern)
 
-	fmt.Println("--- End of Connection Check ---")
+	log.Println("Connection check complete")
 }
 
 func handleConnectionFailure(errorMsg string) {
