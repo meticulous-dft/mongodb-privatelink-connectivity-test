@@ -76,15 +76,24 @@ func main() {
 	}
 
 	log.Printf("Starting MongoDB connection monitor. Check interval: %v\n", checkInterval)
-	log.Printf("MongoDB URI: %s\n", mongoURI) // Be cautious with logging sensitive information
+	log.Printf("MongoDB URI: %s\n", mongoURI)
 
 	for {
-		checkConnection(mongoURI)
+		connectionSuccessful := checkConnection(mongoURI)
+
+		if connectionSuccessful && !lastConnectionStatus {
+			sendAlert("MongoDB Connection Restored", "The connection to MongoDB has been restored.")
+			lastConnectionStatus = true
+		} else if !connectionSuccessful && lastConnectionStatus {
+			sendAlert("MongoDB Connection Failed", "Failed to connect to MongoDB.")
+			lastConnectionStatus = false
+		}
+
 		time.Sleep(checkInterval)
 	}
 }
 
-func checkConnection(uri string) {
+func checkConnection(uri string) bool {
 	log.Println("Starting connection check")
 
 	ctx, cancel := context.WithTimeout(context.Background(), checkInterval)
@@ -94,23 +103,17 @@ func checkConnection(uri string) {
 
 	client, err := mongo.Connect(ctx, clientOpts)
 	if err != nil {
-		handleConnectionFailure(fmt.Sprintf("Failed to connect to MongoDB: %v", err))
-		return
+		log.Printf("Failed to connect to MongoDB: %v\n", err)
+		return false
 	}
 	defer client.Disconnect(ctx)
 
 	// Test connection
 	err = client.Ping(ctx, readpref.Primary())
 	if err != nil {
-		handleConnectionFailure(fmt.Sprintf("Failed to ping MongoDB: %v", err))
-		return
+		log.Printf("Failed to ping MongoDB: %v\n", err)
+		return false
 	}
-
-	// Connection successful
-	handleConnectionSuccess()
-
-	now := time.Now().Format(time.RFC3339)
-	log.Printf("\n--- Connection Check at %s ---\n", now)
 
 	log.Println("Successfully connected to MongoDB")
 
@@ -120,7 +123,7 @@ func checkConnection(uri string) {
 	err = client.Database("admin").RunCommand(ctx, bson.D{{"serverStatus", 1}}).Decode(&serverStatus)
 	if err != nil {
 		log.Printf("Failed to get server status: %v\n", err)
-		return
+		return true // We consider the connection successful even if we can't get server status
 	}
 	log.Printf("Server version: %v\n", serverStatus["version"])
 	if transportSecurity, ok := serverStatus["transportSecurity"].(bson.M); ok {
@@ -133,7 +136,7 @@ func checkConnection(uri string) {
 	err = client.Database("admin").RunCommand(ctx, bson.D{{"isMaster", 1}}).Decode(&topology)
 	if err != nil {
 		log.Printf("Failed to get cluster topology: %v\n", err)
-		return
+		return true // We consider the connection successful even if we can't get topology
 	}
 	log.Printf("Is master: %v\n", topology["ismaster"])
 	if hosts, ok := topology["hosts"].(primitive.A); ok {
@@ -156,24 +159,11 @@ func checkConnection(uri string) {
 	log.Printf("Write Concern: %+v\n", clientOpts.WriteConcern)
 
 	log.Println("Connection check complete")
-}
-
-func handleConnectionFailure(errorMsg string) {
-	if lastConnectionStatus {
-		sendAlert("MongoDB Connection Failed", errorMsg)
-		lastConnectionStatus = false
-	}
-	log.Println(errorMsg)
-}
-
-func handleConnectionSuccess() {
-	if !lastConnectionStatus {
-		sendAlert("MongoDB Connection Restored", "The connection to MongoDB has been restored.")
-		lastConnectionStatus = true
-	}
+	return true
 }
 
 func sendAlert(subject, body string) {
+	log.Printf("Sending alert: %s\n", subject)
 	auth := smtp.PlainAuth("", fromEmail, password, smtpHost)
 	to := []string{toEmail}
 	msg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", toEmail, subject, body))
