@@ -72,17 +72,31 @@ def wait_for_cluster_update():
 
 
 def main():
-    current_config = get_current_cluster_config()
-    current_size = get_instance_size(current_config)
+    while True:
+        try:
+            current_config = get_current_cluster_config()
+            current_size = get_instance_size(current_config)
 
-    # Toggle between M10 and M20
-    new_size = "M20" if current_size == "M10" else "M10"
+            if current_size is None:
+                print("Unable to determine current instance size")
+                time.sleep(300)  # Wait for 5 minutes before trying again
+                continue
 
-    print(f"Current size: {current_size}")
-    print(f"Scaling to: {new_size}")
+            # Toggle between M10 and M20
+            new_size = "M20" if current_size == "M10" else "M10"
 
-    update_cluster_size(new_size)
-    wait_for_cluster_update()
+            print(f"Current size: {current_size}")
+            print(f"Scaling to: {new_size}")
+
+            update_cluster_size(new_size)
+            wait_for_cluster_update()
+
+            print("Waiting for 5 minutes before next scaling operation...")
+            time.sleep(300)  # Wait for 5 minutes
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            print("Waiting for 5 minutes before retrying...")
+            time.sleep(300)  # Wait for 5 minutes before retrying
 
 
 if __name__ == "__main__":
