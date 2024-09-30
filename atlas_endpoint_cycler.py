@@ -13,13 +13,11 @@ PROJECT_ID = os.getenv("ATLAS_PROJECT_ID")
 CLUSTER_NAME = os.getenv("ATLAS_CLUSTER_NAME")
 PUBLIC_KEY = os.getenv("ATLAS_PUBLIC_KEY")
 PRIVATE_KEY = os.getenv("ATLAS_PRIVATE_KEY")
+# AWS Configuration
 VPC_IDS = os.getenv("VPC_IDS", "").split(",")
 SUBNET_IDS = os.getenv("SUBNET_IDS", "").split(",")
 SECURITY_GROUP_IDS = os.getenv("SECURITY_GROUP_IDS", "").split(",")
-# AWS Configuration
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 
 # Create a session with Digest Authentication
 session = requests.Session()
@@ -30,8 +28,6 @@ session.headers.update({"Accept": "application/vnd.atlas.2024-08-05+json"})
 ec2_client = boto3.client(
     "ec2",
     region_name=AWS_REGION,
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
 )
 
 
@@ -66,7 +62,7 @@ def delete_endpoint(endpoint_service_id, vpce_id):
     url = f"{BASE_URL}/api/atlas/v2/groups/{PROJECT_ID}/privateEndpoint/AWS/endpointService/{endpoint_service_id}/endpoint/{vpce_id}"
     response = session.delete(url)
     response.raise_for_status()
-    print(f"Deleted endpoint {vpce_id}")
+    print(f"Deleted private endpoint {vpce_id}")
 
 
 def create_private_endpoint(endpoint_service_id, vpce_id):
@@ -122,7 +118,6 @@ def cycle_private_endpoints():
         for vpc_id in VPC_IDS:
             vpce_id = get_vpc_endpoint_id(vpc_id, endpoint_service_name)
             if vpce_id:
-                endpoint = get_endpoint(endpoint_service_id, vpce_id)
                 print(f"Deleting Private Endpoint {vpce_id}...")
                 delete_endpoint(endpoint_service_id, vpce_id)
                 while True:
@@ -132,7 +127,7 @@ def cycle_private_endpoints():
                     time.sleep(30)
                 delete_aws_vpc_endpoint(vpce_id)
 
-        time.sleep(60)
+        time.sleep(120)
         for i, vpc_id in enumerate(VPC_IDS):
             print(f"Recreating Private Endpoint in VPC {vpc_id}...")
             vpce_id = create_aws_vpc_endpoint(
