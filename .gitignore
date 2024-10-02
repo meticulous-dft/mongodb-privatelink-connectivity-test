@@ -1,3 +1,4 @@
 .env
 mongodb_connection_monitor.log
 mongodb-monitor
+vendor

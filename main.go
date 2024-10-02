@@ -24,6 +24,7 @@ var (
 	fromEmail            string
 	toEmail              string
 	password             string
+	index                string
 	checkInterval        time.Duration
 	logFile              *os.File
 )
@@ -49,6 +50,7 @@ func init() {
 	fromEmail = os.Getenv("FROM_EMAIL")
 	toEmail = os.Getenv("TO_EMAIL")
 	password = os.Getenv("EMAIL_PASSWORD")
+	index = os.Getenv("INDEX")
 
 	if smtpHost == "" || smtpPort == "" || fromEmail == "" || toEmail == "" || password == "" {
 		log.Fatal("Email configuration is incomplete in .env file")
@@ -79,13 +81,13 @@ func main() {
 	log.Printf("MongoDB URI: %s\n", mongoURI)
 
 	for {
-		connectionSuccessful := checkConnection(mongoURI)
+		err := checkConnection(mongoURI)
 
-		if connectionSuccessful && !lastConnectionStatus {
+		if err == nil && !lastConnectionStatus {
 			sendAlert("MongoDB Connection Restored", "The connection to MongoDB has been restored.")
 			lastConnectionStatus = true
-		} else if !connectionSuccessful && lastConnectionStatus {
-			sendAlert("MongoDB Connection Failed", "Failed to connect to MongoDB.")
+		} else if err != nil && lastConnectionStatus {
+			sendAlert("MongoDB Connection Failed", fmt.Sprintf("MongoDB Connectivity Error: %v", err))
 			lastConnectionStatus = false
 		}
 
@@ -93,7 +95,7 @@ func main() {
 	}
 }
 
-func checkConnection(uri string) bool {
+func checkConnection(uri string) error {
 	log.Println("Starting connection check")
 
 	ctx, cancel := context.WithTimeout(context.Background(), checkInterval)
@@ -104,7 +106,7 @@ func checkConnection(uri string) bool {
 	client, err := mongo.Connect(ctx, clientOpts)
 	if err != nil {
 		log.Printf("Failed to connect to MongoDB: %v\n", err)
-		return false
+		return err
 	}
 	defer client.Disconnect(ctx)
 
@@ -112,7 +114,7 @@ func checkConnection(uri string) bool {
 	err = client.Ping(ctx, readpref.Primary())
 	if err != nil {
 		log.Printf("Failed to ping MongoDB: %v\n", err)
-		return false
+		return err
 	}
 
 	log.Println("Successfully connected to MongoDB")
@@ -123,7 +125,7 @@ func checkConnection(uri string) bool {
 	err = client.Database("admin").RunCommand(ctx, bson.D{{"serverStatus", 1}}).Decode(&serverStatus)
 	if err != nil {
 		log.Printf("Failed to get server status: %v\n", err)
-		return true // We consider the connection successful even if we can't get server status
+		return err
 	}
 	log.Printf("Server version: %v\n", serverStatus["version"])
 	if transportSecurity, ok := serverStatus["transportSecurity"].(bson.M); ok {
@@ -136,7 +138,7 @@ func checkConnection(uri string) bool {
 	err = client.Database("admin").RunCommand(ctx, bson.D{{"isMaster", 1}}).Decode(&topology)
 	if err != nil {
 		log.Printf("Failed to get cluster topology: %v\n", err)
-		return true // We consider the connection successful even if we can't get topology
+		return err
 	}
 	log.Printf("Is master: %v\n", topology["ismaster"])
 	if hosts, ok := topology["hosts"].(primitive.A); ok {
@@ -159,14 +161,17 @@ func checkConnection(uri string) bool {
 	log.Printf("Write Concern: %+v\n", clientOpts.WriteConcern)
 
 	log.Println("Connection check complete")
-	return true
+	return nil
 }
 
 func sendAlert(subject, body string) {
 	log.Printf("Sending alert: %s\n", subject)
 	auth := smtp.PlainAuth("", fromEmail, password, smtpHost)
 	to := []string{toEmail}
-	msg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", toEmail, subject, body))
+
+	currentTime := time.Now().Format("2006-01-02 15:04:05")
+
+	msg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\nDate: %s\r\nIndex: %s\r\n%s", toEmail, subject, currentTime, index, body))
 
 	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, fromEmail, to, msg)
 	if err != nil {
