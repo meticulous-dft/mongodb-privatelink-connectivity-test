@@ -2,7 +2,19 @@ import requests
 from requests.auth import HTTPDigestAuth
 import time
 import os
+import logging
 from dotenv import load_dotenv
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("atlas_scaler.log"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger()
 
 load_dotenv()
 
@@ -12,6 +24,9 @@ PROJECT_ID = os.getenv("ATLAS_PROJECT_ID")
 CLUSTER_NAME = os.getenv("ATLAS_CLUSTER_NAME")
 PUBLIC_KEY = os.getenv("ATLAS_PUBLIC_KEY")
 PRIVATE_KEY = os.getenv("ATLAS_PRIVATE_KEY")
+SCALE_FROM = os.getenv("SCALE_FROM", "M10")
+SCALE_TO = os.getenv("SCALE_TO", "M20")
+SLEEP_INTERVAL = int(os.getenv("SLEEP_INTERVAL", 300))
 
 # Create a session with Digest Authentication
 session = requests.Session()
@@ -49,7 +64,7 @@ def update_cluster_size(new_size):
 
     response = session.patch(url, json=payload)
     response.raise_for_status()
-    print(f"Cluster size update initiated: {new_size}")
+    logger.info(f"Cluster size update initiated: {new_size}")
 
 
 def get_instance_size(config):
@@ -67,11 +82,12 @@ def wait_for_cluster_update():
         if config["stateName"] == "IDLE":
             print("Cluster update completed")
             break
-        print("Waiting for cluster update to complete...")
+        logger.info("Waiting for cluster update to complete...")
         time.sleep(60)
 
 
 def main():
+
     while True:
         try:
             current_config = get_current_cluster_config()
@@ -79,24 +95,26 @@ def main():
 
             if current_size is None:
                 print("Unable to determine current instance size")
-                time.sleep(300)  # Wait for 5 minutes before trying again
+                time.sleep(SLEEP_INTERVAL)
                 continue
 
             # Toggle between M10 and M20
-            new_size = "M20" if current_size == "M10" else "M10"
+            new_size = SCALE_TO if current_size == SCALE_FROM else SCALE_FROM
 
-            print(f"Current size: {current_size}")
-            print(f"Scaling to: {new_size}")
+            logger.info(f"Current size: {current_size}")
+            logger.info(f"Scaling to: {new_size}")
 
             update_cluster_size(new_size)
             wait_for_cluster_update()
 
-            print("Waiting for 5 minutes before next scaling operation...")
-            time.sleep(300)  # Wait for 5 minutes
+            logger.info(
+                f"Waiting for {SLEEP_INTERVAL / 60} minutes before next scaling operation..."
+            )
+            time.sleep(SLEEP_INTERVAL)
         except Exception as e:
-            print(f"An error occurred: {e}")
-            print("Waiting for 5 minutes before retrying...")
-            time.sleep(300)  # Wait for 5 minutes before retrying
+            logger.info(f"An error occurred: {e}")
+            logger.info(f"Waiting for {SLEEP_INTERVAL / 60} minutes before retrying...")
+            time.sleep(SLEEP_INTERVAL)
 
 
 if __name__ == "__main__":

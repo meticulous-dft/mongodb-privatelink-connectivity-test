@@ -3,7 +3,19 @@ from requests.auth import HTTPDigestAuth
 import time
 import boto3
 import os
+import logging
 from dotenv import load_dotenv
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("atlas_endpoint_cycler.log"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger()
 
 load_dotenv()
 
@@ -62,7 +74,7 @@ def delete_endpoint(endpoint_service_id, vpce_id):
     url = f"{BASE_URL}/api/atlas/v2/groups/{PROJECT_ID}/privateEndpoint/AWS/endpointService/{endpoint_service_id}/endpoint/{vpce_id}"
     response = session.delete(url)
     response.raise_for_status()
-    print(f"Deleted private endpoint {vpce_id}")
+    logger.info(f"Deleted private endpoint {vpce_id}")
 
 
 def create_private_endpoint(endpoint_service_id, vpce_id):
@@ -72,7 +84,7 @@ def create_private_endpoint(endpoint_service_id, vpce_id):
     }
     response = session.post(url, json=payload)
     response.raise_for_status()
-    print(f"Created private endpoint {vpce_id}")
+    logger.info(f"Created private endpoint {vpce_id}")
     return response.json()
 
 
@@ -91,7 +103,7 @@ def get_vpc_endpoint_id(vpc_id, service_name):
 
 def delete_aws_vpc_endpoint(vpc_endpoint_id):
     ec2_client.delete_vpc_endpoints(VpcEndpointIds=[vpc_endpoint_id])
-    print(f"Deleted AWS VPC endpoint {vpc_endpoint_id}")
+    logger.info(f"Deleted AWS VPC endpoint {vpc_endpoint_id}")
 
 
 def create_aws_vpc_endpoint(
@@ -105,7 +117,7 @@ def create_aws_vpc_endpoint(
         SecurityGroupIds=[security_group_id],
     )
     vpc_endpoint_id = response["VpcEndpoint"]["VpcEndpointId"]
-    print(f"Created AWS VPC endpoint {vpc_endpoint_id}")
+    logger.info(f"Created AWS VPC endpoint {vpc_endpoint_id}")
     return vpc_endpoint_id
 
 
@@ -118,7 +130,7 @@ def cycle_private_endpoints():
         for vpc_id in VPC_IDS:
             vpce_id = get_vpc_endpoint_id(vpc_id, endpoint_service_name)
             if vpce_id:
-                print(f"Deleting Private Endpoint {vpce_id}...")
+                logger.info(f"Deleting Private Endpoint {vpce_id}...")
                 delete_endpoint(endpoint_service_id, vpce_id)
                 while True:
                     endpoint = get_endpoint(endpoint_service_id, vpce_id)
@@ -129,7 +141,7 @@ def cycle_private_endpoints():
 
         time.sleep(120)
         for i, vpc_id in enumerate(VPC_IDS):
-            print(f"Recreating Private Endpoint in VPC {vpc_id}...")
+            logger.info(f"Recreating Private Endpoint in VPC {vpc_id}...")
             vpce_id = create_aws_vpc_endpoint(
                 vpc_id, SUBNET_IDS[i], SECURITY_GROUP_IDS[i], endpoint_service_name
             )
@@ -141,7 +153,7 @@ def cycle_private_endpoints():
                 time.sleep(30)
 
         # Wait before next cycle
-        print("Waiting for 5 minutes before next cycle...")
+        logger.info("Waiting for 5 minutes before next cycle...")
         time.sleep(300)  # 5 minutes
 
 
