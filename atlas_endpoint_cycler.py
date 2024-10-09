@@ -11,7 +11,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("atlas_endpoint_cycler.log"),
+        logging.FileHandler("logs/atlas_endpoint_cycler.log"),
         logging.StreamHandler(),
     ],
 )

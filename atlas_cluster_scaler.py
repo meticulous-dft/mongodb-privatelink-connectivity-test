@@ -10,7 +10,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("atlas_scaler.log"),
+        logging.FileHandler("logs/atlas_scaler.log"),
         logging.StreamHandler(),
     ],
 )
