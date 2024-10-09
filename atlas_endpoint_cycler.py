@@ -31,6 +31,9 @@ SUBNET_IDS = os.getenv("SUBNET_IDS", "").split(",")
 SECURITY_GROUP_IDS = os.getenv("SECURITY_GROUP_IDS", "").split(",")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
+# Wait file configuration
+WAIT_FILE_PATH = os.getenv("WAIT_FILE_PATH")
+
 # Create a session with Digest Authentication
 session = requests.Session()
 session.auth = HTTPDigestAuth(PUBLIC_KEY, PRIVATE_KEY)
@@ -41,6 +44,17 @@ ec2_client = boto3.client(
     "ec2",
     region_name=AWS_REGION,
 )
+
+
+def wait_for_load_completion():
+    if WAIT_FILE_PATH:
+        logger.info(f"Waiting for load completion file: {WAIT_FILE_PATH}")
+        while not os.path.exists(WAIT_FILE_PATH):
+            logger.info("Load completion file not found. Waiting...")
+            time.sleep(60)  # Check every minute
+        logger.info("Load completion file found. Proceeding with scaling.")
+    else:
+        logger.info("No wait file specified. Proceeding immediately.")
 
 
 def get_endpoint_service_id():
@@ -122,6 +136,11 @@ def create_aws_vpc_endpoint(
 
 
 def cycle_private_endpoints():
+    logger.info("Starting private endpoint cycling process")
+
+    # Wait for load completion if WAIT_FILE_PATH is set
+    wait_for_load_completion()
+
     endpoint_service_id = get_endpoint_service_id()
     print(f"Using Endpoint Service ID: {endpoint_service_id}")
     endpoint_service_name = get_endpoint_service_name(endpoint_service_id)

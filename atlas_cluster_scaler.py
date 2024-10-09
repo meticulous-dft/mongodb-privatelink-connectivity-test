@@ -28,10 +28,24 @@ SCALE_FROM = os.getenv("SCALE_FROM", "M10")
 SCALE_TO = os.getenv("SCALE_TO", "M20")
 SLEEP_INTERVAL = int(os.getenv("SLEEP_INTERVAL", 300))
 
+# Wait file configuration
+WAIT_FILE_PATH = os.getenv("WAIT_FILE_PATH")
+
 # Create a session with Digest Authentication
 session = requests.Session()
 session.auth = HTTPDigestAuth(PUBLIC_KEY, PRIVATE_KEY)
 session.headers.update({"Accept": "application/vnd.atlas.2024-08-05+json"})
+
+
+def wait_for_load_completion():
+    if WAIT_FILE_PATH:
+        logger.info(f"Waiting for load completion file: {WAIT_FILE_PATH}")
+        while not os.path.exists(WAIT_FILE_PATH):
+            logger.info("Load completion file not found. Waiting...")
+            time.sleep(60)  # Check every minute
+        logger.info("Load completion file found. Proceeding with scaling.")
+    else:
+        logger.info("No wait file specified. Proceeding immediately.")
 
 
 def get_current_cluster_config():
@@ -87,6 +101,10 @@ def wait_for_cluster_update():
 
 
 def main():
+    logger.info("Starting cluster scaling process")
+
+    # Wait for load completion
+    wait_for_load_completion()
 
     while True:
         try:
